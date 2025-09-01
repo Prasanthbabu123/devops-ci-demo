@@ -1,0 +1,63 @@
+
+pipeline {
+  agent any
+
+  tools {
+    maven 'Maven3'
+    jdk 'jdk17'
+  }
+
+  environment {
+    DOCKER_BUILDKIT = '1'
+  }
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    timeout(time: 20, unit: 'MINUTES')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build (package without tests)') {
+      steps {
+        sh 'mvn -B -DskipTests clean package'
+      }
+    }
+
+    stage('Unit Tests') {
+      steps {
+        sh 'mvn -B test'
+      }
+      post {
+        always {
+          junit '**/target/surefire-reports/*.xml'
+        }
+      }
+    }
+
+    stage('Docker Build') {
+      steps {
+        sh 'docker build -t demo-app:latest .'
+      }
+    }
+
+    stage('Deploy (Local Docker)') {
+      steps {
+        sh 'docker rm -f demo-app || true'
+        sh 'docker run -d --name demo-app -p 8080:8080 demo-app:latest'
+      }
+    }
+  }
+
+  post {
+    success {
+      archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+    }
+  }
+}
